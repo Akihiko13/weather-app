@@ -31,27 +31,65 @@
     width: 100%;
     max-width: 420px;
   }
-  .temp-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-  }
-  .temp-tile {
-    background: rgba(0,0,0,0.03);
-    border-radius: 12px;
-    padding: 10px 4px;
+  .day-header {
     text-align: center;
+    color: rgba(255,255,255,0.95);
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0 0 14px;
   }
-  .temp-tile .t-name {
+  /* 市町村ごとのカード */
+  .mcard {
+    background: var(--card-bg);
+    border-radius: 20px;
+    padding: 16px 18px;
+    box-shadow: 0 8px 30px rgba(0,0,0,0.18);
+    backdrop-filter: blur(10px);
+    margin-bottom: 12px;
+    text-align: left;
+  }
+  .mcard-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .mcard .m-name {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-main);
+  }
+  .mcard .m-cond {
+    font-size: 12px;
+    color: var(--text-sub);
+    margin-top: 2px;
+  }
+  .mcard .m-icon { width: 58px; height: 58px; flex: 0 0 auto; }
+  .mcard .m-icon .wi { width: 58px; height: 58px; }
+  .mcard .m-temp {
+    font-size: 40px;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
+    margin: 6px 0 12px;
+  }
+  .mcard .m-temp span { font-size: 20px; font-weight: 600; vertical-align: super; }
+  .mcard .m-metrics {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-top: 12px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+  }
+  .mcard .m-metrics > div {
     font-size: 12px;
     color: var(--text-sub);
   }
-  .temp-tile .t-val {
-    font-size: 22px;
-    font-weight: 800;
+  .mcard .m-metrics strong {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
     color: var(--text-main);
     margin-top: 2px;
-    line-height: 1.1;
   }
   .card {
     background: var(--card-bg);
@@ -192,8 +230,8 @@
 </head>
 <body>
 <div class="container">
-  <div class="card" id="card">
-    <div class="loading">読み込み中...</div>
+  <div id="card">
+    <div class="mcard"><div class="loading">読み込み中...</div></div>
   </div>
   <div class="updated" id="updated"></div>
 </div>
@@ -343,28 +381,26 @@ async function fetchAll() {
       if (amedasRes.ok) amedasMap = await amedasRes.json();
     } catch (e) { /* 観測値なしで継続 */ }
 
+    const num = a => (Array.isArray(a) && typeof a[0] === 'number') ? a[0] : null;
     keys.forEach(key => {
-      let currentTemp = null;
       const st = amedasMap && amedasMap[CITIES[key].amedasId];
-      // temp は [観測値, 品質フラグ]。値が数値なら採用する
-      if (st && Array.isArray(st.temp) && typeof st.temp[0] === 'number') {
-        currentTemp = st.temp[0];
-      }
       cache[key] = {
         weatherText: shared.weatherText,
         tmax: shared.tmax,
         tmin: shared.tmin,
         popBlocks: shared.popBlocks,
-        currentTemp,
+        currentTemp: st ? num(st.temp) : null,
+        humidity: st ? num(st.humidity) : null,
+        wind: st ? num(st.wind) : null,
       };
     });
     renderAll();
   } catch (e) {
-    card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
+    card.innerHTML = `<div class="mcard"><div class="error">天気情報の取得に失敗しました<br>${e.message}</div></div>`;
   }
 }
 
-// 香川県の共通天気（上部）＋ 全市町村の現在気温一覧（下部）を一括表示
+// 各市町村ごとにカードを分けて、現在気温・最高・最低・風速・湿度を表示
 function renderAll() {
   const keys = Object.keys(CITIES);
   const shared = keys.map(k => cache[k]).find(Boolean);
@@ -377,27 +413,40 @@ function renderAll() {
   const today = new Date();
   const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
   const emoji = weatherEmoji(shared.weatherText);
+  const tmax = shared.tmax !== null ? Math.round(shared.tmax) + '°' : '-';
+  const tmin = shared.tmin !== null ? Math.round(shared.tmin) + '°' : '-';
 
-  const tiles = keys.map(k => {
-    const d = cache[k];
-    const t = (d && d.currentTemp !== null && d.currentTemp !== undefined) ? Math.round(d.currentTemp) + '°' : '-';
-    return `<div class="temp-tile"><div class="t-name">${CITIES[k].name}</div><div class="t-val">${t}</div></div>`;
+  const cards = keys.map(k => {
+    const d = cache[k] || {};
+    const cur = (d.currentTemp !== null && d.currentTemp !== undefined) ? Math.round(d.currentTemp) : '--';
+    const wind = (d.wind !== null && d.wind !== undefined) ? d.wind + ' m/s' : '-';
+    const hum = (d.humidity !== null && d.humidity !== undefined) ? d.humidity + '%' : '-';
+    return `<div class="mcard">
+      <div class="mcard-head">
+        <div>
+          <div class="m-name">${CITIES[k].name}</div>
+          <div class="m-cond">${shared.weatherText || ''}</div>
+        </div>
+        <div class="m-icon">${weatherIcon(shared.weatherText)}</div>
+      </div>
+      <div class="m-temp">${cur}<span>°C</span></div>
+      <div class="m-metrics">
+        <div>最高<strong>${tmax}</strong></div>
+        <div>最低<strong>${tmin}</strong></div>
+        <div>風速<strong>${wind}</strong></div>
+        <div>湿度<strong>${hum}</strong></div>
+      </div>
+    </div>`;
   }).join('');
 
+  const precip = renderPopBlocks(shared.popBlocks, emoji);
+
   card.innerHTML = `
-    <p class="city-name">香川県</p>
-    <p class="date">${dateStr}</p>
-    <div class="wicon">${weatherIcon(shared.weatherText)}</div>
-    <p class="condition">${shared.weatherText || '不明'}</p>
-    <div class="subrow">
-      <div>最高<strong>${shared.tmax !== null ? Math.round(shared.tmax) + '°' : '-'}</strong></div>
-      <div>最低<strong>${shared.tmin !== null ? Math.round(shared.tmin) + '°' : '-'}</strong></div>
-    </div>
-    ${renderPopBlocks(shared.popBlocks, emoji)}
-    <p class="hourly-title">市町村ごとの現在気温</p>
-    <div class="temp-grid">${tiles}</div>
+    <p class="day-header">${dateStr} の香川県内 天気・気温</p>
+    ${cards}
+    ${precip ? `<div class="mcard">${precip}</div>` : ''}
   `;
-  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ)`;
+  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ) ／ 最高・最低・天気は香川県予報`;
 }
 
 // 今日の時間帯別（6時間ブロック）の降水確率を表示。JMAはこれが最も細かい時間別データ
