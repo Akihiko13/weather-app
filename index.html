@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>天気予報</title>
+<style>
+  :root {
+    --bg1: #4facfe;
+    --bg2: #00f2fe;
+    --card-bg: rgba(255, 255, 255, 0.92);
+    --text-main: #1a1a2e;
+    --text-sub: #555;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    background: linear-gradient(135deg, var(--bg1), var(--bg2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .container {
+    width: 100%;
+    max-width: 420px;
+  }
+  .city-tabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+  .city-tabs button {
+    flex: 1;
+    padding: 12px 0;
+    font-size: 15px;
+    font-weight: 600;
+    border: none;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.35);
+    color: #fff;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .city-tabs button:active {
+    transform: scale(0.97);
+  }
+  .city-tabs button.active {
+    background: #fff;
+    color: #1a1a2e;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  }
+  .card {
+    background: var(--card-bg);
+    border-radius: 24px;
+    padding: 32px 24px;
+    box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+    text-align: center;
+    backdrop-filter: blur(10px);
+  }
+  .city-name {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-sub);
+    margin: 0 0 4px;
+  }
+  .date {
+    font-size: 13px;
+    color: #999;
+    margin: 0 0 16px;
+  }
+  .emoji {
+    font-size: 88px;
+    line-height: 1;
+    margin: 8px 0;
+  }
+  .condition {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--text-main);
+    margin: 4px 0 20px;
+  }
+  .temp {
+    font-size: 64px;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
+    margin: 0;
+  }
+  .temp span {
+    font-size: 32px;
+    font-weight: 600;
+    vertical-align: super;
+  }
+  .subrow {
+    display: flex;
+    justify-content: center;
+    gap: 24px;
+    margin-top: 20px;
+    padding-top: 16px;
+    border-top: 1px solid rgba(0,0,0,0.08);
+  }
+  .subrow div {
+    font-size: 13px;
+    color: var(--text-sub);
+  }
+  .subrow strong {
+    display: block;
+    font-size: 18px;
+    color: var(--text-main);
+    margin-top: 2px;
+  }
+  .loading, .error {
+    color: var(--text-sub);
+    font-size: 15px;
+    padding: 40px 0;
+  }
+  .error { color: #d63031; }
+  .updated {
+    text-align: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 12px;
+    margin-top: 14px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="city-tabs">
+    <button data-city="takamatsu" class="active">高松</button>
+    <button data-city="tokyo">東京</button>
+    <button data-city="osaka">大阪</button>
+  </div>
+  <div class="card" id="card">
+    <div class="loading">読み込み中...</div>
+  </div>
+  <div class="updated" id="updated"></div>
+</div>
+
+<script>
+const CITIES = {
+  takamatsu: { name: '高松', lat: 34.3401, lon: 134.0434 },
+  tokyo:     { name: '東京', lat: 35.6762, lon: 139.6503 },
+  osaka:     { name: '大阪', lat: 34.6937, lon: 135.5023 },
+};
+
+const WEATHER_MAP = {
+  0:  ['☀️', '快晴'],
+  1:  ['🌤️', 'ほぼ晴れ'],
+  2:  ['⛅', 'くもり時々晴れ'],
+  3:  ['☁️', 'くもり'],
+  45: ['🌫️', '霧'],
+  48: ['🌫️', '霧氷'],
+  51: ['🌦️', '弱い霧雨'],
+  53: ['🌦️', '霧雨'],
+  55: ['🌧️', '強い霧雨'],
+  56: ['🌧️', '着氷性の霧雨'],
+  57: ['🌧️', '強い着氷性の霧雨'],
+  61: ['🌦️', '弱い雨'],
+  63: ['🌧️', '雨'],
+  65: ['🌧️', '強い雨'],
+  66: ['🌧️', '着氷性の雨'],
+  67: ['🌧️', '強い着氷性の雨'],
+  71: ['🌨️', '弱い雪'],
+  73: ['🌨️', '雪'],
+  75: ['❄️', '強い雪'],
+  77: ['❄️', '霧雪'],
+  80: ['🌦️', 'にわか雨'],
+  81: ['🌧️', '強めのにわか雨'],
+  82: ['⛈️', '激しいにわか雨'],
+  85: ['🌨️', 'にわか雪'],
+  86: ['❄️', '強いにわか雪'],
+  95: ['⛈️', '雷雨'],
+  96: ['⛈️', '雷雨(雹あり)'],
+  99: ['⛈️', '激しい雷雨(雹あり)'],
+};
+
+function weatherInfo(code) {
+  return WEATHER_MAP[code] || ['❓', '不明'];
+}
+
+const card = document.getElementById('card');
+const updatedEl = document.getElementById('updated');
+const tabs = document.querySelectorAll('.city-tabs button');
+
+async function loadCity(key) {
+  const city = CITIES[key];
+  card.innerHTML = '<div class="loading">読み込み中...</div>';
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&timezone=Asia%2FTokyo`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('取得失敗');
+    const data = await res.json();
+    render(city, data);
+  } catch (e) {
+    card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
+  }
+}
+
+function render(city, data) {
+  const cur = data.current;
+  const [emoji, label] = weatherInfo(cur.weather_code);
+  const today = new Date();
+  const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+  const tmax = Math.round(data.daily.temperature_2m_max[0]);
+  const tmin = Math.round(data.daily.temperature_2m_min[0]);
+
+  card.innerHTML = `
+    <p class="city-name">${city.name}</p>
+    <p class="date">${dateStr}</p>
+    <div class="emoji">${emoji}</div>
+    <p class="condition">${label}</p>
+    <p class="temp">${Math.round(cur.temperature_2m)}<span>°C</span></p>
+    <div class="subrow">
+      <div>最高<strong>${tmax}°</strong></div>
+      <div>最低<strong>${tmin}°</strong></div>
+      <div>湿度<strong>${Math.round(cur.relative_humidity_2m)}%</strong></div>
+      <div>風速<strong>${Math.round(cur.wind_speed_10m)}m/s</strong></div>
+    </div>
+  `;
+  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+tabs.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tabs.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    loadCity(btn.dataset.city);
+  });
+});
+
+loadCity('takamatsu');
+</script>
+</body>
+</html>
