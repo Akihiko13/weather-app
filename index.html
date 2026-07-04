@@ -192,7 +192,8 @@ const CITIES = {
   osaka:     { name: '大阪', forecastCode: '270000', lat: 34.6937, lon: 135.5023 },
 };
 
-// JMA/Open-MeteoともブラウザからのCORS/接続制限を避けるためプロキシ経由で取得
+// Open-Meteoはこの回線から直接接続がブロックされるためプロキシ経由で取得。
+// JMAはCORS対応(access-control-allow-origin:*)のため直接取得する。
 function proxied(url) {
   return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
 }
@@ -241,7 +242,7 @@ function showCity(key) {
 }
 
 async function fetchAmedasLatestFile() {
-  const res = await fetch(proxied('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt'));
+  const res = await fetch('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt');
   if (!res.ok) throw new Error('アメダス最新時刻の取得に失敗');
   const text = (await res.text()).trim();
   const compact = text.split('+')[0].replace(/[-T:]/g, '');
@@ -268,7 +269,7 @@ function extractForecast(json) {
 }
 
 async function fetchCity(city) {
-  const forecastRes = await fetch(proxied(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`));
+  const forecastRes = await fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`);
   if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
   const forecastJson = await forecastRes.json();
   const { weatherText, tmax, tmin, stationCode } = extractForecast(forecastJson);
@@ -276,11 +277,12 @@ async function fetchCity(city) {
   let currentTemp = null;
   try {
     const amedasUrl = await fetchAmedasLatestFile();
-    const amedasRes = await fetch(proxied(amedasUrl));
+    const amedasRes = await fetch(amedasUrl);
     if (amedasRes.ok && stationCode) {
       const amedasJson = await amedasRes.json();
       const station = amedasJson[stationCode];
-      if (station && station.temp && station.temp[1] === 1) {
+      // temp は [観測値, 品質フラグ]。値が数値なら採用する
+      if (station && Array.isArray(station.temp) && typeof station.temp[0] === 'number') {
         currentTemp = station.temp[0];
       }
     }
@@ -295,8 +297,10 @@ async function fetchHourlyAll() {
   const lats = keys.map(k => CITIES[k].lat).join(',');
   const lons = keys.map(k => CITIES[k].lon).join(',');
   const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=temperature_2m,weather_code,precipitation_probability&forecast_days=1&timezone=Asia%2FTokyo`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
   try {
-    const res = await fetch(proxied(url));
+    const res = await fetch(proxied(url), { signal: controller.signal });
     if (!res.ok) return;
     const data = await res.json();
     const list = Array.isArray(data) ? data : [data];
@@ -313,27 +317,25 @@ async function fetchHourlyAll() {
       }
     });
   } catch (e) { /* 時間別が取れなくてもメイン表示は継続 */ }
+  finally { clearTimeout(timeout); }
 }
 
 async function fetchAll() {
   const keys = Object.keys(CITIES);
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+  // まずJMAのメイン天気を取得・表示（プロキシに依存しない安定経路）
   try {
-    const [results] = await Promise.all([
-      Promise.all(keys.map(k => fetchCity(CITIES[k]))),
-      fetchHourlyAll(),
-    ]);
+    const results = await Promise.all(keys.map(k => fetchCity(CITIES[k])));
     keys.forEach((key, i) => {
       cache[key] = Object.assign(cache[key] || {}, results[i]);
     });
     showCity(currentKey);
   } catch (e) {
-    const msg = e.name === 'AbortError' ? 'タイムアウトしました' : e.message;
-    card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${msg}</div>`;
-  } finally {
-    clearTimeout(timeout);
+    card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
+    return;
   }
+  // 時間別予報は後追いで取得。遅延・失敗してもメイン表示には影響しない
+  await fetchHourlyAll();
+  showCity(currentKey);
 }
 
 function render(city, data) {
