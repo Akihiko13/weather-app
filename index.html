@@ -77,6 +77,26 @@
     line-height: 1;
     margin: 8px 0;
   }
+  /* アニメーション天気アイコン */
+  .wicon { margin: 6px auto 4px; width: 108px; height: 108px; }
+  .wi { width: 108px; height: 108px; display: block; }
+  .wi .spin { animation: wi-spin 14s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .wi .pulse { animation: wi-pulse 3s ease-in-out infinite; transform-box: fill-box; transform-origin: center; }
+  .wi .cloud { animation: wi-bob 4s ease-in-out infinite; }
+  .wi .drop { animation: wi-fall 1.3s linear infinite; }
+  .wi .bolt { animation: wi-flash 2.4s ease-in-out infinite; }
+  .wi .flake { animation: wi-snow 2.4s linear infinite; transform-box: fill-box; transform-origin: center; }
+  .wi .fogline { animation: wi-drift 3s ease-in-out infinite; }
+  @keyframes wi-spin { to { transform: rotate(360deg); } }
+  @keyframes wi-pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.09); } }
+  @keyframes wi-bob { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+  @keyframes wi-fall { 0% { transform: translateY(-3px); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(12px); opacity: 0; } }
+  @keyframes wi-flash { 0%,42%,58%,100% { opacity: .2; } 48%,52% { opacity: 1; } }
+  @keyframes wi-snow { 0% { transform: translateY(-3px) rotate(0); opacity: 0; } 25% { opacity: 1; } 100% { transform: translateY(13px) rotate(160deg); opacity: 0; } }
+  @keyframes wi-drift { 0%,100% { transform: translateX(-3px); } 50% { transform: translateX(3px); } }
+  @media (prefers-reduced-motion: reduce) {
+    .wi * { animation: none !important; }
+  }
   .condition {
     font-size: 22px;
     font-weight: 700;
@@ -213,6 +233,46 @@ function weatherEmoji(text) {
   return '❓';
 }
 
+// アニメーション天気アイコン（SVG + CSS）用パーツ
+const SVG_SUN = `<g class="spin"><g stroke="#FFB300" stroke-width="5" stroke-linecap="round">
+  <line x1="54" y1="19" x2="54" y2="8"/><line x1="73.1" y1="26.9" x2="80.9" y2="19.1"/>
+  <line x1="81" y1="46" x2="92" y2="46"/><line x1="73.1" y1="65.1" x2="80.9" y2="72.9"/>
+  <line x1="54" y1="73" x2="54" y2="84"/><line x1="34.9" y1="65.1" x2="27.1" y2="72.9"/>
+  <line x1="27" y1="46" x2="16" y2="46"/><line x1="34.9" y1="26.9" x2="27.1" y2="19.1"/>
+</g></g><circle class="pulse" cx="54" cy="46" r="17" fill="#FFD54F"/>`;
+const SVG_CLOUD = `<g class="cloud" fill="#e6ecf3">
+  <ellipse cx="40" cy="60" rx="18" ry="15"/><ellipse cx="64" cy="56" rx="21" ry="18"/>
+  <rect x="30" y="58" width="50" height="18" rx="9"/></g>`;
+const SVG_RAIN = `<g stroke="#4a90d9" stroke-width="4" stroke-linecap="round">
+  <line class="drop" x1="43" y1="80" x2="41" y2="88" style="animation-delay:0s"/>
+  <line class="drop" x1="55" y1="80" x2="53" y2="88" style="animation-delay:.45s"/>
+  <line class="drop" x1="67" y1="80" x2="65" y2="88" style="animation-delay:.9s"/></g>`;
+const SVG_BOLT = `<polygon class="bolt" fill="#FFC107" points="56,72 44,92 53,92 47,104 68,84 58,84 63,72"/>`;
+const SVG_SNOW = `<g fill="#eaf2ff">
+  <circle class="flake" cx="42" cy="82" r="3.5" style="animation-delay:0s"/>
+  <circle class="flake" cx="55" cy="82" r="3.5" style="animation-delay:.7s"/>
+  <circle class="flake" cx="68" cy="82" r="3.5" style="animation-delay:1.3s"/></g>`;
+const SVG_FOG = `<g class="cloud" fill="#e6ecf3"><ellipse cx="54" cy="48" rx="27" ry="18"/></g>
+  <g stroke="#cfd8e3" stroke-width="5" stroke-linecap="round">
+  <line class="fogline" x1="30" y1="76" x2="78" y2="76" style="animation-delay:0s"/>
+  <line class="fogline" x1="34" y1="88" x2="74" y2="88" style="animation-delay:.6s"/></g>`;
+const SUN_BEHIND = `<g transform="translate(-8,-14) scale(.62)">${SVG_SUN}</g>`;
+
+function weatherIcon(text) {
+  const t = text || '';
+  let body;
+  if (t.includes('雷')) body = SVG_CLOUD + SVG_BOLT;
+  else if (t.includes('雪')) body = SVG_CLOUD + SVG_SNOW;
+  else if (t.includes('雨') && t.includes('晴')) body = SUN_BEHIND + SVG_CLOUD + SVG_RAIN;
+  else if (t.includes('雨')) body = SVG_CLOUD + SVG_RAIN;
+  else if (t.includes('晴') && t.includes('くもり')) body = SUN_BEHIND + SVG_CLOUD;
+  else if (t.includes('晴')) body = SVG_SUN;
+  else if (t.includes('くもり')) body = SVG_CLOUD;
+  else if (t.includes('霧')) body = SVG_FOG;
+  else body = SVG_CLOUD;
+  return `<svg class="wi" viewBox="0 0 108 108" xmlns="http://www.w3.org/2000/svg">${body}</svg>`;
+}
+
 const card = document.getElementById('card');
 const updatedEl = document.getElementById('updated');
 const tabs = document.querySelectorAll('.city-tabs button');
@@ -307,7 +367,7 @@ function render(city, data) {
   card.innerHTML = `
     <p class="city-name">${city.name}</p>
     <p class="date">${dateStr}</p>
-    <div class="emoji">${emoji}</div>
+    <div class="wicon">${weatherIcon(data.weatherText)}</div>
     <p class="condition">${data.weatherText || '不明'}</p>
     <p class="temp">${heroTemp}<span>°C</span></p>
     ${heroLabel ? `<p class="date">${heroLabel}</p>` : ''}
