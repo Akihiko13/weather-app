@@ -33,13 +33,15 @@
   }
   .city-tabs {
     display: flex;
+    flex-wrap: wrap;
     gap: 8px;
     margin-bottom: 16px;
   }
   .city-tabs button {
-    flex: 1;
-    padding: 12px 0;
-    font-size: 15px;
+    flex: 1 1 calc(33.333% - 6px);
+    min-width: 62px;
+    padding: 11px 2px;
+    font-size: 14px;
     font-weight: 600;
     border: none;
     border-radius: 12px;
@@ -198,8 +200,10 @@
 <div class="container">
   <div class="city-tabs">
     <button data-city="takamatsu" class="active">高松</button>
-    <button data-city="tokyo">東京</button>
-    <button data-city="osaka">大阪</button>
+    <button data-city="marugame">丸亀</button>
+    <button data-city="shodoshima">小豆島</button>
+    <button data-city="mitoyo">三豊</button>
+    <button data-city="higashikagawa">東かがわ</button>
   </div>
   <div class="card" id="card">
     <div class="loading">読み込み中...</div>
@@ -208,11 +212,15 @@
 </div>
 
 <script>
-// 気象庁(JMA)公式データを使用。forecastCode: 府県予報区コード
+// 気象庁(JMA)公式データを使用。
+// 天気・降水確率は香川県(370000)共通。気温は各市町村のアメダス地点から取得する。
+const KAGAWA_FORECAST = '370000';
 const CITIES = {
-  takamatsu: { name: '高松', forecastCode: '370000' },
-  tokyo:     { name: '東京', forecastCode: '130000' },
-  osaka:     { name: '大阪', forecastCode: '270000' },
+  takamatsu:     { name: '高松',   amedasId: '72086' }, // 高松
+  marugame:      { name: '丸亀',   amedasId: '72111' }, // 多度津(丸亀の隣)
+  shodoshima:    { name: '小豆島', amedasId: '72061' }, // 内海
+  mitoyo:        { name: '三豊',   amedasId: '72161' }, // 財田
+  higashikagawa: { name: '東かがわ', amedasId: '72146' }, // 引田
 };
 
 // 降水確率から時間帯ブロックの絵文字を決める（天気は半日単位のため確率で補完）
@@ -341,34 +349,38 @@ function extractForecast(json) {
   return { weatherText, tmax, tmin, stationCode, popBlocks };
 }
 
-async function fetchCity(city) {
-  const forecastRes = await fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`);
-  if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
-  const forecastJson = await forecastRes.json();
-  const { weatherText, tmax, tmin, stationCode, popBlocks } = extractForecast(forecastJson);
-
-  let currentTemp = null;
-  try {
-    const amedasUrl = await fetchAmedasLatestFile();
-    const amedasRes = await fetch(amedasUrl);
-    if (amedasRes.ok && stationCode) {
-      const amedasJson = await amedasRes.json();
-      const station = amedasJson[stationCode];
-      // temp は [観測値, 品質フラグ]。値が数値なら採用する
-      if (station && Array.isArray(station.temp) && typeof station.temp[0] === 'number') {
-        currentTemp = station.temp[0];
-      }
-    }
-  } catch (e) { /* 観測値が無くても予報は表示する */ }
-
-  return { weatherText, tmax, tmin, currentTemp, popBlocks };
-}
-
+// 香川県内は天気・降水確率が共通なので予報は1回、アメダスも1回だけ取得し、
+// 各市町村は自分のアメダス地点の現在気温だけ差し替える。
 async function fetchAll() {
   const keys = Object.keys(CITIES);
   try {
-    const results = await Promise.all(keys.map(k => fetchCity(CITIES[k])));
-    keys.forEach((key, i) => { cache[key] = results[i]; });
+    const forecastRes = await fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${KAGAWA_FORECAST}.json`);
+    if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
+    const shared = extractForecast(await forecastRes.json());
+
+    // アメダス観測値（取れなくても予報は表示する）
+    let amedasMap = null;
+    try {
+      const amedasUrl = await fetchAmedasLatestFile();
+      const amedasRes = await fetch(amedasUrl);
+      if (amedasRes.ok) amedasMap = await amedasRes.json();
+    } catch (e) { /* 観測値なしで継続 */ }
+
+    keys.forEach(key => {
+      let currentTemp = null;
+      const st = amedasMap && amedasMap[CITIES[key].amedasId];
+      // temp は [観測値, 品質フラグ]。値が数値なら採用する
+      if (st && Array.isArray(st.temp) && typeof st.temp[0] === 'number') {
+        currentTemp = st.temp[0];
+      }
+      cache[key] = {
+        weatherText: shared.weatherText,
+        tmax: shared.tmax,
+        tmin: shared.tmin,
+        popBlocks: shared.popBlocks,
+        currentTemp,
+      };
+    });
     showCity(currentKey);
   } catch (e) {
     card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
