@@ -31,33 +31,27 @@
     width: 100%;
     max-width: 420px;
   }
-  .city-tabs {
-    display: flex;
-    flex-wrap: wrap;
+  .temp-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
     gap: 8px;
-    margin-bottom: 16px;
   }
-  .city-tabs button {
-    flex: 1 1 calc(33.333% - 6px);
-    min-width: 62px;
-    padding: 11px 2px;
-    font-size: 14px;
-    font-weight: 600;
-    border: none;
+  .temp-tile {
+    background: rgba(0,0,0,0.03);
     border-radius: 12px;
-    background: rgba(255, 255, 255, 0.35);
-    color: #fff;
-    cursor: pointer;
-    transition: background 0.2s, transform 0.1s;
-    -webkit-tap-highlight-color: transparent;
+    padding: 10px 4px;
+    text-align: center;
   }
-  .city-tabs button:active {
-    transform: scale(0.97);
+  .temp-tile .t-name {
+    font-size: 12px;
+    color: var(--text-sub);
   }
-  .city-tabs button.active {
-    background: #fff;
-    color: #1a1a2e;
-    box-shadow: 0 4px 14px rgba(0,0,0,0.15);
+  .temp-tile .t-val {
+    font-size: 22px;
+    font-weight: 800;
+    color: var(--text-main);
+    margin-top: 2px;
+    line-height: 1.1;
   }
   .card {
     background: var(--card-bg);
@@ -198,13 +192,6 @@
 </head>
 <body>
 <div class="container">
-  <div class="city-tabs">
-    <button data-city="takamatsu" class="active">高松</button>
-    <button data-city="marugame">丸亀</button>
-    <button data-city="shodoshima">小豆島</button>
-    <button data-city="mitoyo">三豊</button>
-    <button data-city="higashikagawa">東かがわ</button>
-  </div>
   <div class="card" id="card">
     <div class="loading">読み込み中...</div>
   </div>
@@ -218,6 +205,7 @@ const KAGAWA_FORECAST = '370000';
 const CITIES = {
   takamatsu:     { name: '高松',   amedasId: '72086' }, // 高松
   marugame:      { name: '丸亀',   amedasId: '72111' }, // 多度津(丸亀の隣)
+  ayagawa:       { name: '綾川',   amedasId: '72121' }, // 滝宮
   shodoshima:    { name: '小豆島', amedasId: '72061' }, // 内海
   mitoyo:        { name: '三豊',   amedasId: '72161' }, // 財田
   higashikagawa: { name: '東かがわ', amedasId: '72146' }, // 引田
@@ -301,18 +289,7 @@ function weatherIcon(text) {
 
 const card = document.getElementById('card');
 const updatedEl = document.getElementById('updated');
-const tabs = document.querySelectorAll('.city-tabs button');
 const cache = {};
-let currentKey = 'takamatsu';
-
-function showCity(key) {
-  currentKey = key;
-  if (cache[key]) {
-    render(CITIES[key], cache[key]);
-  } else {
-    card.innerHTML = '<div class="loading">読み込み中...</div>';
-  }
-}
 
 async function fetchAmedasLatestFile() {
   const res = await fetch('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt');
@@ -381,34 +358,44 @@ async function fetchAll() {
         currentTemp,
       };
     });
-    showCity(currentKey);
+    renderAll();
   } catch (e) {
     card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
   }
 }
 
-function render(city, data) {
-  const emoji = weatherEmoji(data.weatherText);
-  const [bg1, bg2] = weatherBg(data.weatherText);
+// 香川県の共通天気（上部）＋ 全市町村の現在気温一覧（下部）を一括表示
+function renderAll() {
+  const keys = Object.keys(CITIES);
+  const shared = keys.map(k => cache[k]).find(Boolean);
+  if (!shared) return;
+
+  const [bg1, bg2] = weatherBg(shared.weatherText);
   document.body.style.setProperty('--bg1', bg1);
   document.body.style.setProperty('--bg2', bg2);
+
   const today = new Date();
   const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
-  const heroTemp = data.currentTemp !== null ? Math.round(data.currentTemp) : (data.tmax !== null ? Math.round(data.tmax) : '--');
-  const heroLabel = data.currentTemp !== null ? '' : '(予想最高)';
+  const emoji = weatherEmoji(shared.weatherText);
+
+  const tiles = keys.map(k => {
+    const d = cache[k];
+    const t = (d && d.currentTemp !== null && d.currentTemp !== undefined) ? Math.round(d.currentTemp) + '°' : '-';
+    return `<div class="temp-tile"><div class="t-name">${CITIES[k].name}</div><div class="t-val">${t}</div></div>`;
+  }).join('');
 
   card.innerHTML = `
-    <p class="city-name">${city.name}</p>
+    <p class="city-name">香川県</p>
     <p class="date">${dateStr}</p>
-    <div class="wicon">${weatherIcon(data.weatherText)}</div>
-    <p class="condition">${data.weatherText || '不明'}</p>
-    <p class="temp">${heroTemp}<span>°C</span></p>
-    ${heroLabel ? `<p class="date">${heroLabel}</p>` : ''}
+    <div class="wicon">${weatherIcon(shared.weatherText)}</div>
+    <p class="condition">${shared.weatherText || '不明'}</p>
     <div class="subrow">
-      <div>最高<strong>${data.tmax !== null ? Math.round(data.tmax) + '°' : '-'}</strong></div>
-      <div>最低<strong>${data.tmin !== null ? Math.round(data.tmin) + '°' : '-'}</strong></div>
+      <div>最高<strong>${shared.tmax !== null ? Math.round(shared.tmax) + '°' : '-'}</strong></div>
+      <div>最低<strong>${shared.tmin !== null ? Math.round(shared.tmin) + '°' : '-'}</strong></div>
     </div>
-    ${renderPopBlocks(data.popBlocks, emoji)}
+    ${renderPopBlocks(shared.popBlocks, emoji)}
+    <p class="hourly-title">市町村ごとの現在気温</p>
+    <div class="temp-grid">${tiles}</div>
   `;
   updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ)`;
 }
@@ -430,14 +417,6 @@ function renderPopBlocks(popBlocks, dayEmoji) {
   }).join('');
   return `<p class="hourly-title">今日の時間帯別 降水確率</p><div class="hourly">${cells}</div>`;
 }
-
-tabs.forEach(btn => {
-  btn.addEventListener('click', () => {
-    tabs.forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    showCity(btn.dataset.city);
-  });
-});
 
 fetchAll();
 </script>
