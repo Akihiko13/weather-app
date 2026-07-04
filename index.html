@@ -185,31 +185,18 @@
 
 <script>
 // 気象庁(JMA)公式データを使用。forecastCode: 府県予報区コード
-// 時間別予報はOpen-Meteoを使うため緯度経度も保持
 const CITIES = {
-  takamatsu: { name: '高松', forecastCode: '370000', lat: 34.3401, lon: 134.0434 },
-  tokyo:     { name: '東京', forecastCode: '130000', lat: 35.6762, lon: 139.6503 },
-  osaka:     { name: '大阪', forecastCode: '270000', lat: 34.6937, lon: 135.5023 },
+  takamatsu: { name: '高松', forecastCode: '370000' },
+  tokyo:     { name: '東京', forecastCode: '130000' },
+  osaka:     { name: '大阪', forecastCode: '270000' },
 };
 
-// Open-Meteoはこの回線から直接接続がブロックされるためプロキシ経由で取得。
-// JMAはCORS対応(access-control-allow-origin:*)のため直接取得する。
-function proxied(url) {
-  return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
-}
-
-// Open-Meteoのweather_code → 絵文字
-function codeEmoji(code) {
-  if (code === 0) return '☀️';
-  if (code <= 2) return '🌤️';
-  if (code === 3) return '☁️';
-  if (code <= 48) return '🌫️';
-  if (code <= 57) return '🌦️';
-  if (code <= 67) return '🌧️';
-  if (code <= 77) return '❄️';
-  if (code <= 82) return '🌦️';
-  if (code <= 86) return '🌨️';
-  return '⛈️';
+// 降水確率から時間帯ブロックの絵文字を決める（天気は半日単位のため確率で補完）
+function popEmoji(pop, dayEmoji) {
+  if (pop >= 70) return '🌧️';
+  if (pop >= 40) return '🌦️';
+  if (pop >= 20) return '⛅';
+  return dayEmoji;
 }
 
 function weatherEmoji(text) {
@@ -253,11 +240,19 @@ function extractForecast(json) {
   const report = json[0];
   let weatherText = null;
   let tmax = null, tmin = null, stationCode = null;
+  let popBlocks = [];
   for (const ts of report.timeSeries) {
     const area = ts.areas && ts.areas[0];
     if (!area) continue;
     if (weatherText === null && area.weathers) {
       weatherText = area.weathers[0];
+    }
+    // 降水確率(6時間ブロック)。timeDefinesの各時刻から6時間ぶんをそのブロックが担当
+    if (!popBlocks.length && area.pops) {
+      popBlocks = area.pops.map((v, i) => ({
+        time: ts.timeDefines[i],
+        pop: v === '' ? null : Number(v),
+      }));
     }
     if (tmax === null && area.temps) {
       const nums = area.temps.map(v => (v === '' ? null : Number(v))).filter(v => v !== null && !Number.isNaN(v));
@@ -265,14 +260,14 @@ function extractForecast(json) {
       if (area.area && area.area.code) stationCode = area.area.code;
     }
   }
-  return { weatherText, tmax, tmin, stationCode };
+  return { weatherText, tmax, tmin, stationCode, popBlocks };
 }
 
 async function fetchCity(city) {
   const forecastRes = await fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`);
   if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
   const forecastJson = await forecastRes.json();
-  const { weatherText, tmax, tmin, stationCode } = extractForecast(forecastJson);
+  const { weatherText, tmax, tmin, stationCode, popBlocks } = extractForecast(forecastJson);
 
   let currentTemp = null;
   try {
@@ -288,54 +283,18 @@ async function fetchCity(city) {
     }
   } catch (e) { /* 観測値が無くても予報は表示する */ }
 
-  return { weatherText, tmax, tmin, currentTemp };
-}
-
-// 時間別予報(Open-Meteo)を全都市まとめて1回で取得。失敗しても本体表示は壊さない
-async function fetchHourlyAll() {
-  const keys = Object.keys(CITIES);
-  const lats = keys.map(k => CITIES[k].lat).join(',');
-  const lons = keys.map(k => CITIES[k].lon).join(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&hourly=temperature_2m,weather_code,precipitation_probability&forecast_days=1&timezone=Asia%2FTokyo`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-  try {
-    const res = await fetch(proxied(url), { signal: controller.signal });
-    if (!res.ok) return;
-    const data = await res.json();
-    const list = Array.isArray(data) ? data : [data];
-    keys.forEach((key, i) => {
-      const h = list[i] && list[i].hourly;
-      if (h && h.time) {
-        cache[key] = cache[key] || {};
-        cache[key].hourly = h.time.map((t, j) => ({
-          time: t,
-          temp: h.temperature_2m ? h.temperature_2m[j] : null,
-          code: h.weather_code ? h.weather_code[j] : null,
-          pop: h.precipitation_probability ? h.precipitation_probability[j] : null,
-        }));
-      }
-    });
-  } catch (e) { /* 時間別が取れなくてもメイン表示は継続 */ }
-  finally { clearTimeout(timeout); }
+  return { weatherText, tmax, tmin, currentTemp, popBlocks };
 }
 
 async function fetchAll() {
   const keys = Object.keys(CITIES);
-  // まずJMAのメイン天気を取得・表示（プロキシに依存しない安定経路）
   try {
     const results = await Promise.all(keys.map(k => fetchCity(CITIES[k])));
-    keys.forEach((key, i) => {
-      cache[key] = Object.assign(cache[key] || {}, results[i]);
-    });
+    keys.forEach((key, i) => { cache[key] = results[i]; });
     showCity(currentKey);
   } catch (e) {
     card.innerHTML = `<div class="error">天気情報の取得に失敗しました<br>${e.message}</div>`;
-    return;
   }
-  // 時間別予報は後追いで取得。遅延・失敗してもメイン表示には影響しない
-  await fetchHourlyAll();
-  showCity(currentKey);
 }
 
 function render(city, data) {
@@ -356,33 +315,27 @@ function render(city, data) {
       <div>最高<strong>${data.tmax !== null ? Math.round(data.tmax) + '°' : '-'}</strong></div>
       <div>最低<strong>${data.tmin !== null ? Math.round(data.tmin) + '°' : '-'}</strong></div>
     </div>
-    ${renderHourly(data.hourly)}
+    ${renderPopBlocks(data.popBlocks, emoji)}
   `;
   updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ)`;
 }
 
-function renderHourly(hourly) {
-  if (!hourly || !hourly.length) return '';
-  const now = new Date();
-  const todayStr = now.toLocaleDateString('sv-SE'); // YYYY-MM-DD
-  // 今日ぶんのうち現在時刻以降を表示
-  const rows = hourly.filter(h => {
-    const d = new Date(h.time);
-    return h.time.slice(0, 10) === todayStr && d.getHours() >= now.getHours();
-  });
-  if (!rows.length) return '';
-  const cells = rows.map(h => {
-    const hh = new Date(h.time).getHours();
-    const pop = (h.pop !== null && h.pop !== undefined && h.pop >= 10) ? `<div class="h-pop">☂${h.pop}%</div>` : '';
-    const temp = h.temp !== null && h.temp !== undefined ? Math.round(h.temp) + '°' : '-';
+// 今日の時間帯別（6時間ブロック）の降水確率を表示。JMAはこれが最も細かい時間別データ
+function renderPopBlocks(popBlocks, dayEmoji) {
+  if (!popBlocks || !popBlocks.length) return '';
+  const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
+  const blocks = popBlocks.filter(b => b.time.slice(0, 10) === todayStr && b.pop !== null);
+  if (!blocks.length) return '';
+  const cells = blocks.map(b => {
+    const start = new Date(b.time).getHours();
+    const end = start + 6; // JMAの降水確率は各時刻から6時間ぶん
     return `<div class="hourly-cell">
-      <div class="h-time">${hh}時</div>
-      <div class="h-emoji">${h.code !== null ? codeEmoji(h.code) : '❓'}</div>
-      <div class="h-temp">${temp}</div>
-      ${pop}
+      <div class="h-time">${start}〜${end}時</div>
+      <div class="h-emoji">${popEmoji(b.pop, dayEmoji)}</div>
+      <div class="h-pop">☂${b.pop}%</div>
     </div>`;
   }).join('');
-  return `<p class="hourly-title">今日の時間別予報</p><div class="hourly">${cells}</div>`;
+  return `<p class="hourly-title">今日の時間帯別 降水確率</p><div class="hourly">${cells}</div>`;
 }
 
 tabs.forEach(btn => {
