@@ -141,45 +141,25 @@
 </div>
 
 <script>
+// 気象庁(JMA)公式データを使用。forecastCode: 府県予報区コード, amedasId: アメダス観測所番号
 const CITIES = {
-  takamatsu: { name: '高松', lat: 34.3401, lon: 134.0434 },
-  tokyo:     { name: '東京', lat: 35.6762, lon: 139.6503 },
-  osaka:     { name: '大阪', lat: 34.6937, lon: 135.5023 },
+  takamatsu: { name: '高松', forecastCode: '370000', amedasId: '72391' },
+  tokyo:     { name: '東京', forecastCode: '130000', amedasId: '44132' },
+  osaka:     { name: '大阪', forecastCode: '270000', amedasId: '62078' },
 };
 
-const WEATHER_MAP = {
-  0:  ['☀️', '快晴'],
-  1:  ['🌤️', 'ほぼ晴れ'],
-  2:  ['⛅', 'くもり時々晴れ'],
-  3:  ['☁️', 'くもり'],
-  45: ['🌫️', '霧'],
-  48: ['🌫️', '霧氷'],
-  51: ['🌦️', '弱い霧雨'],
-  53: ['🌦️', '霧雨'],
-  55: ['🌧️', '強い霧雨'],
-  56: ['🌧️', '着氷性の霧雨'],
-  57: ['🌧️', '強い着氷性の霧雨'],
-  61: ['🌦️', '弱い雨'],
-  63: ['🌧️', '雨'],
-  65: ['🌧️', '強い雨'],
-  66: ['🌧️', '着氷性の雨'],
-  67: ['🌧️', '強い着氷性の雨'],
-  71: ['🌨️', '弱い雪'],
-  73: ['🌨️', '雪'],
-  75: ['❄️', '強い雪'],
-  77: ['❄️', '霧雪'],
-  80: ['🌦️', 'にわか雨'],
-  81: ['🌧️', '強めのにわか雨'],
-  82: ['⛈️', '激しいにわか雨'],
-  85: ['🌨️', 'にわか雪'],
-  86: ['❄️', '強いにわか雪'],
-  95: ['⛈️', '雷雨'],
-  96: ['⛈️', '雷雨(雹あり)'],
-  99: ['⛈️', '激しい雷雨(雹あり)'],
-};
-
-function weatherInfo(code) {
-  return WEATHER_MAP[code] || ['❓', '不明'];
+function weatherEmoji(text) {
+  if (!text) return '❓';
+  if (text.includes('雷')) return '⛈️';
+  if (text.includes('雪')) return '❄️';
+  if (text.includes('雨') && text.includes('晴')) return '🌦️';
+  if (text.includes('雨') && text.includes('くもり')) return '🌧️';
+  if (text.includes('雨')) return '🌧️';
+  if (text.includes('晴') && text.includes('くもり')) return '⛅';
+  if (text.includes('晴')) return '☀️';
+  if (text.includes('くもり')) return '☁️';
+  if (text.includes('霧')) return '🌫️';
+  return '❓';
 }
 
 const card = document.getElementById('card');
@@ -197,19 +177,63 @@ function showCity(key) {
   }
 }
 
+async function fetchAmedasLatestFile() {
+  const res = await fetch('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt');
+  if (!res.ok) throw new Error('アメダス最新時刻の取得に失敗');
+  const text = (await res.text()).trim();
+  const compact = text.split('+')[0].replace(/[-T:]/g, '');
+  return `https://www.jma.go.jp/bosai/amedas/data/map/${compact}.json`;
+}
+
+function extractForecast(json) {
+  const report = json[0];
+  let weatherText = null;
+  let tmax = null, tmin = null;
+  for (const ts of report.timeSeries) {
+    const area = ts.areas && ts.areas[0];
+    if (!area) continue;
+    if (weatherText === null && area.weathers) {
+      weatherText = area.weathers[0];
+    }
+    if (tmax === null && area.temps) {
+      const nums = area.temps.map(v => (v === '' ? null : Number(v))).filter(v => v !== null && !Number.isNaN(v));
+      if (nums.length >= 2) { tmin = Math.min(...nums.slice(0, 2)); tmax = Math.max(...nums.slice(0, 2)); }
+    }
+  }
+  return { weatherText, tmax, tmin };
+}
+
+async function fetchCity(city) {
+  const [forecastRes, amedasUrl] = await Promise.all([
+    fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`),
+    fetchAmedasLatestFile(),
+  ]);
+  if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
+  const forecastJson = await forecastRes.json();
+  const { weatherText, tmax, tmin } = extractForecast(forecastJson);
+
+  let currentTemp = null;
+  try {
+    const amedasRes = await fetch(amedasUrl);
+    if (amedasRes.ok) {
+      const amedasJson = await amedasRes.json();
+      const station = amedasJson[city.amedasId];
+      if (station && station.temp && station.temp[1] === 1) {
+        currentTemp = station.temp[0];
+      }
+    }
+  } catch (e) { /* 観測値が無くても予報は表示する */ }
+
+  return { weatherText, tmax, tmin, currentTemp };
+}
+
 async function fetchAll() {
   const keys = Object.keys(CITIES);
-  const lats = keys.map(k => CITIES[k].lat).join(',');
-  const lons = keys.map(k => CITIES[k].lon).join(',');
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lats}&longitude=${lons}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min&forecast_days=1&timezone=Asia%2FTokyo`;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
+  const timeout = setTimeout(() => controller.abort(), 10000);
   try {
-    const res = await fetch(url, { signal: controller.signal });
-    if (!res.ok) throw new Error('取得失敗');
-    const data = await res.json();
-    const list = Array.isArray(data) ? data : [data];
-    keys.forEach((key, i) => { cache[key] = list[i]; });
+    const results = await Promise.all(keys.map(k => fetchCity(CITIES[k])));
+    keys.forEach((key, i) => { cache[key] = results[i]; });
     showCity(currentKey);
   } catch (e) {
     const msg = e.name === 'AbortError' ? 'タイムアウトしました' : e.message;
@@ -220,27 +244,25 @@ async function fetchAll() {
 }
 
 function render(city, data) {
-  const cur = data.current;
-  const [emoji, label] = weatherInfo(cur.weather_code);
+  const emoji = weatherEmoji(data.weatherText);
   const today = new Date();
   const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
-  const tmax = Math.round(data.daily.temperature_2m_max[0]);
-  const tmin = Math.round(data.daily.temperature_2m_min[0]);
+  const heroTemp = data.currentTemp !== null ? Math.round(data.currentTemp) : (data.tmax !== null ? Math.round(data.tmax) : '--');
+  const heroLabel = data.currentTemp !== null ? '' : '(予想最高)';
 
   card.innerHTML = `
     <p class="city-name">${city.name}</p>
     <p class="date">${dateStr}</p>
     <div class="emoji">${emoji}</div>
-    <p class="condition">${label}</p>
-    <p class="temp">${Math.round(cur.temperature_2m)}<span>°C</span></p>
+    <p class="condition">${data.weatherText || '不明'}</p>
+    <p class="temp">${heroTemp}<span>°C</span></p>
+    ${heroLabel ? `<p class="date">${heroLabel}</p>` : ''}
     <div class="subrow">
-      <div>最高<strong>${tmax}°</strong></div>
-      <div>最低<strong>${tmin}°</strong></div>
-      <div>湿度<strong>${Math.round(cur.relative_humidity_2m)}%</strong></div>
-      <div>風速<strong>${Math.round(cur.wind_speed_10m)}m/s</strong></div>
+      <div>最高<strong>${data.tmax !== null ? Math.round(data.tmax) + '°' : '-'}</strong></div>
+      <div>最低<strong>${data.tmin !== null ? Math.round(data.tmin) + '°' : '-'}</strong></div>
     </div>
   `;
-  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })}`;
+  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ)`;
 }
 
 tabs.forEach(btn => {
