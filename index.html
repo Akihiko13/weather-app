@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>天気予報</title>
 <style>
+  /* 天気で背景色を滑らかに変えるため、色をアニメ可能なカスタムプロパティにする */
+  @property --bg1 { syntax: '<color>'; inherits: false; initial-value: #4facfe; }
+  @property --bg2 { syntax: '<color>'; inherits: false; initial-value: #00c6fb; }
   :root {
-    --bg1: #4facfe;
-    --bg2: #00f2fe;
     --card-bg: rgba(255, 255, 255, 0.92);
     --text-main: #1a1a2e;
     --text-sub: #555;
@@ -17,7 +18,10 @@
     margin: 0;
     min-height: 100vh;
     font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+    --bg1: #4facfe;
+    --bg2: #00c6fb;
     background: linear-gradient(135deg, var(--bg1), var(--bg2));
+    transition: --bg1 0.7s ease, --bg2 0.7s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -258,6 +262,20 @@ const SVG_FOG = `<g class="cloud" fill="#e6ecf3"><ellipse cx="54" cy="48" rx="27
   <line class="fogline" x1="34" y1="88" x2="74" y2="88" style="animation-delay:.6s"/></g>`;
 const SUN_BEHIND = `<g transform="translate(-8,-14) scale(.62)">${SVG_SUN}</g>`;
 
+// 天気テキスト → 背景グラデーション [上色, 下色]。白文字が読める中間トーンに調整
+function weatherBg(text) {
+  const t = text || '';
+  if (t.includes('雷')) return ['#3a4453', '#59616e'];
+  if (t.includes('雪')) return ['#6f94bb', '#a3c0d8'];
+  if (t.includes('雨') && t.includes('晴')) return ['#5b7fa6', '#87a7c4'];
+  if (t.includes('雨')) return ['#4b6373', '#6b8494'];
+  if (t.includes('晴') && t.includes('くもり')) return ['#5b93c9', '#8fb8d8'];
+  if (t.includes('晴')) return ['#2b8fe0', '#6fd0f5'];
+  if (t.includes('くもり')) return ['#7d8a99', '#a7b3bf'];
+  if (t.includes('霧')) return ['#87939d', '#aeb9c2'];
+  return ['#4facfe', '#00c6fb'];
+}
+
 function weatherIcon(text) {
   const t = text || '';
   let body;
@@ -359,6 +377,9 @@ async function fetchAll() {
 
 function render(city, data) {
   const emoji = weatherEmoji(data.weatherText);
+  const [bg1, bg2] = weatherBg(data.weatherText);
+  document.body.style.setProperty('--bg1', bg1);
+  document.body.style.setProperty('--bg2', bg2);
   const today = new Date();
   const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
   const heroTemp = data.currentTemp !== null ? Math.round(data.currentTemp) : (data.tmax !== null ? Math.round(data.tmax) : '--');
