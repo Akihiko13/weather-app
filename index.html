@@ -141,12 +141,17 @@
 </div>
 
 <script>
-// 気象庁(JMA)公式データを使用。forecastCode: 府県予報区コード, amedasId: アメダス観測所番号
+// 気象庁(JMA)公式データを使用。forecastCode: 府県予報区コード
 const CITIES = {
-  takamatsu: { name: '高松', forecastCode: '370000', amedasId: '72391' },
-  tokyo:     { name: '東京', forecastCode: '130000', amedasId: '44132' },
-  osaka:     { name: '大阪', forecastCode: '270000', amedasId: '62078' },
+  takamatsu: { name: '高松', forecastCode: '370000' },
+  tokyo:     { name: '東京', forecastCode: '130000' },
+  osaka:     { name: '大阪', forecastCode: '270000' },
 };
+
+// JMAはブラウザからの直接fetchにCORSを許可していないためプロキシ経由で取得
+function proxied(url) {
+  return `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`;
+}
 
 function weatherEmoji(text) {
   if (!text) return '❓';
@@ -178,7 +183,7 @@ function showCity(key) {
 }
 
 async function fetchAmedasLatestFile() {
-  const res = await fetch('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt');
+  const res = await fetch(proxied('https://www.jma.go.jp/bosai/amedas/data/latest_time.txt'));
   if (!res.ok) throw new Error('アメダス最新時刻の取得に失敗');
   const text = (await res.text()).trim();
   const compact = text.split('+')[0].replace(/[-T:]/g, '');
@@ -188,7 +193,7 @@ async function fetchAmedasLatestFile() {
 function extractForecast(json) {
   const report = json[0];
   let weatherText = null;
-  let tmax = null, tmin = null;
+  let tmax = null, tmin = null, stationCode = null;
   for (const ts of report.timeSeries) {
     const area = ts.areas && ts.areas[0];
     if (!area) continue;
@@ -198,26 +203,25 @@ function extractForecast(json) {
     if (tmax === null && area.temps) {
       const nums = area.temps.map(v => (v === '' ? null : Number(v))).filter(v => v !== null && !Number.isNaN(v));
       if (nums.length >= 2) { tmin = Math.min(...nums.slice(0, 2)); tmax = Math.max(...nums.slice(0, 2)); }
+      if (area.area && area.area.code) stationCode = area.area.code;
     }
   }
-  return { weatherText, tmax, tmin };
+  return { weatherText, tmax, tmin, stationCode };
 }
 
 async function fetchCity(city) {
-  const [forecastRes, amedasUrl] = await Promise.all([
-    fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`),
-    fetchAmedasLatestFile(),
-  ]);
+  const forecastRes = await fetch(proxied(`https://www.jma.go.jp/bosai/forecast/data/forecast/${city.forecastCode}.json`));
   if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
   const forecastJson = await forecastRes.json();
-  const { weatherText, tmax, tmin } = extractForecast(forecastJson);
+  const { weatherText, tmax, tmin, stationCode } = extractForecast(forecastJson);
 
   let currentTemp = null;
   try {
-    const amedasRes = await fetch(amedasUrl);
-    if (amedasRes.ok) {
+    const amedasUrl = await fetchAmedasLatestFile();
+    const amedasRes = await fetch(proxied(amedasUrl));
+    if (amedasRes.ok && stationCode) {
       const amedasJson = await amedasRes.json();
-      const station = amedasJson[city.amedasId];
+      const station = amedasJson[stationCode];
       if (station && station.temp && station.temp[1] === 1) {
         currentTemp = station.temp[0];
       }
