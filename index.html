@@ -29,8 +29,23 @@
   }
   .container {
     width: 100%;
-    max-width: 420px;
+    max-width: 440px;
   }
+  /* PCなど広い画面では横に広げて市町村を3列に */
+  @media (min-width: 760px) {
+    .container { max-width: 880px; }
+  }
+  /* 市町村カードのグリッド: スマホ2列 → PC3列(3×2) */
+  .mgrid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px;
+  }
+  @media (min-width: 760px) {
+    .mgrid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .mgrid .mcard { margin-bottom: 0; }
+  .summary { text-align: center; }
   .day-header {
     text-align: center;
     color: rgba(255,255,255,0.95);
@@ -91,6 +106,12 @@
     color: var(--text-main);
     margin-top: 2px;
   }
+  /* 市町村カード(グリッド内・コンパクト) */
+  .mcity { padding: 14px 14px; }
+  .mcity .m-name { font-size: 17px; }
+  .mcity .m-temp { font-size: 34px; margin: 4px 0 10px; }
+  .mcity .m-temp span { font-size: 17px; }
+  .mcity .m-metrics { gap: 12px; }
   .card {
     background: var(--card-bg);
     border-radius: 24px;
@@ -421,18 +442,10 @@ function renderAll() {
     const cur = (d.currentTemp !== null && d.currentTemp !== undefined) ? Math.round(d.currentTemp) : '--';
     const wind = (d.wind !== null && d.wind !== undefined) ? d.wind + ' m/s' : '-';
     const hum = (d.humidity !== null && d.humidity !== undefined) ? d.humidity + '%' : '-';
-    return `<div class="mcard">
-      <div class="mcard-head">
-        <div>
-          <div class="m-name">${CITIES[k].name}</div>
-          <div class="m-cond">${shared.weatherText || ''}</div>
-        </div>
-        <div class="m-icon">${weatherIcon(shared.weatherText)}</div>
-      </div>
+    return `<div class="mcard mcity">
+      <div class="m-name">${CITIES[k].name}</div>
       <div class="m-temp">${cur}<span>°C</span></div>
       <div class="m-metrics">
-        <div>最高<strong>${tmax}</strong></div>
-        <div>最低<strong>${tmin}</strong></div>
         <div>風速<strong>${wind}</strong></div>
         <div>湿度<strong>${hum}</strong></div>
       </div>
@@ -442,11 +455,21 @@ function renderAll() {
   const precip = renderPopBlocks(shared.popBlocks, emoji);
 
   card.innerHTML = `
-    <p class="day-header">${dateStr} の香川県内 天気・気温</p>
-    ${cards}
-    ${precip ? `<div class="mcard">${precip}</div>` : ''}
+    <div class="mcard summary">
+      <p class="city-name">香川県</p>
+      <p class="date">${dateStr}</p>
+      <div class="wicon">${weatherIcon(shared.weatherText)}</div>
+      <p class="condition">${shared.weatherText || '不明'}</p>
+      <div class="subrow">
+        <div>最高<strong>${tmax}</strong></div>
+        <div>最低<strong>${tmin}</strong></div>
+      </div>
+      ${precip}
+    </div>
+    <p class="day-header">市町村ごとの現在の観測</p>
+    <div class="mgrid">${cards}</div>
   `;
-  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ) ／ 最高・最低・天気は香川県予報`;
+  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ) ／ 天気・最高・最低・降水確率は香川県予報`;
 }
 
 // 今日の時間帯別（6時間ブロック）の降水確率を表示。JMAはこれが最も細かい時間別データ
