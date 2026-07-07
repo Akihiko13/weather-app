@@ -280,6 +280,9 @@
   .q-int b { display:block; font-size:18px; font-weight:800; color:var(--text-main); }
   .q-place { font-size:14px; font-weight:700; color:var(--text-main); }
   .q-sub { font-size:11px; color:#888; margin-top:1px; }
+  .pop-day { margin-bottom:12px; }
+  .pop-day:last-child { margin-bottom:0; }
+  .pop-day-label { font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:6px; }
 </style>
 
 </head>
@@ -537,17 +540,27 @@ function threeDaySection(days) {
   return sectionCard('📅 今日・明日・明後日の天気', `<div class="fc-grid">${cards}</div>`);
 }
 
-function popBlocksHtml(popBlocks) {
+function popBlocksHtml(popBlocks, days) {
   if (!popBlocks || !popBlocks.length) return '';
-  const todayStr = new Date().toLocaleDateString('sv-SE');
-  const blocks = popBlocks.filter(b => b.time.slice(0, 10) === todayStr && b.pop !== null);
-  if (!blocks.length) return '';
-  const cells = blocks.map(b => {
-    const start = new Date(b.time).getHours();
-    const end = start + 6;
-    return `<div class="hourly-cell"><div class="h-time">${start}〜${end}時</div><div class="h-emoji">${popEmoji(b.pop, '☁️')}</div><div class="h-pop">☂${b.pop}%</div></div>`;
+  const today = new Date().toLocaleDateString('sv-SE');
+  const tmr = new Date(Date.now() + 86400000).toLocaleDateString('sv-SE');
+  const wk = ['日','月','火','水','木','金','土'];
+  const groups = {};
+  popBlocks.forEach(b => { if (b.pop === null) return; const dk = b.time.slice(0, 10); (groups[dk] = groups[dk] || []).push(b); });
+  let html = Object.keys(groups).sort().map(dk => {
+    const d = new Date(dk + 'T00:00:00');
+    const label = dk === today ? '今日' : dk === tmr ? '明日' : `${d.getMonth()+1}/${d.getDate()}(${wk[d.getDay()]})`;
+    const cells = groups[dk].map(b => {
+      const start = new Date(b.time).getHours(), end = start + 6;
+      return `<div class="hourly-cell"><div class="h-time">${start}〜${end}時</div><div class="h-emoji">${popEmoji(b.pop, '☁️')}</div><div class="h-pop">☂${b.pop}%</div></div>`;
+    }).join('');
+    return `<div class="pop-day"><div class="pop-day-label">${label}</div><div class="hourly">${cells}</div></div>`;
   }).join('');
-  return `<div class="hourly">${cells}</div>`;
+  const da = days && days[2];
+  if (da && da.pop != null) {
+    html += `<div class="pop-day"><div class="pop-day-label">明後日 ${da.mmdd}(${da.weekday})</div><div class="hourly"><div class="hourly-cell"><div class="h-time">終日</div><div class="h-emoji">${popEmoji(da.pop, '☁️')}</div><div class="h-pop">☂${da.pop}%</div></div></div></div>`;
+  }
+  return html;
 }
 
 function municipalitySection() {
@@ -608,14 +621,14 @@ function renderAll() {
 
   const now = new Date();
   const dateStr = now.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
-  const precip = popBlocksHtml(f.popBlocks);
+  const precip = popBlocksHtml(f.popBlocks, f.days);
 
   card.innerHTML = `
     <p class="page-title">香川県の天気・防災情報</p>
     <p class="page-date">${dateStr} 現在</p>
     ${warningSection()}
     ${threeDaySection(f.days)}
-    ${precip ? sectionCard('☔ 今日の時間帯別 降水確率', precip) : ''}
+    ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日・明後日）', precip) : ''}
     ${municipalitySection()}
     ${waveSection(f.days)}
     ${typhoonSection()}
