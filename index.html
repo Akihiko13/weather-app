@@ -280,9 +280,12 @@
   .q-int b { display:block; font-size:18px; font-weight:800; color:var(--text-main); }
   .q-place { font-size:14px; font-weight:700; color:var(--text-main); }
   .q-sub { font-size:11px; color:#888; margin-top:1px; }
-  .pop-day { margin-bottom:12px; }
-  .pop-day:last-child { margin-bottom:0; }
+  .pop-days { display:flex; flex-direction:column; gap:12px; }
   .pop-day-label { font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:6px; }
+  @media (min-width:760px) {
+    .pop-days { flex-direction:row; flex-wrap:wrap; align-items:flex-start; gap:28px; }
+    .pop-days .pop-day { flex:0 0 auto; }
+  }
 </style>
 
 </head>
@@ -560,7 +563,7 @@ function popBlocksHtml(popBlocks, days) {
   if (da && da.pop != null) {
     html += `<div class="pop-day"><div class="pop-day-label">明後日 ${da.mmdd}(${da.weekday})</div><div class="hourly"><div class="hourly-cell"><div class="h-time">終日</div><div class="h-emoji">${popEmoji(da.pop, '☁️')}</div><div class="h-pop">☂${da.pop}%</div></div></div></div>`;
   }
-  return html;
+  return `<div class="pop-days">${html}</div>`;
 }
 
 function municipalitySection() {
