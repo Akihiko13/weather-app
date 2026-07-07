@@ -247,7 +247,41 @@
     font-size: 12px;
     margin-top: 14px;
   }
+  /* ===== 防災総合ページ用 ===== */
+  .page-title { text-align:center; color:#fff; font-size:21px; font-weight:800; margin:0 0 2px; }
+  .page-date { text-align:center; color:rgba(255,255,255,.9); font-size:13px; margin:0 0 16px; }
+  .section-title { font-size:15px; font-weight:800; color:var(--text-main); margin:0 0 12px; }
+  .section.alert { box-shadow:0 8px 30px rgba(231,76,60,.28); }
+  .section.alert .section-title { color:#c0392b; }
+  .ok-text { color:var(--text-sub); font-size:13px; margin:0; }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { padding:6px 12px; border-radius:999px; font-size:13px; font-weight:700; }
+  .chip-warn { background:#ffe0e0; color:#c0392b; }
+  .chip-ty { background:#ffe9d6; color:#c15600; }
+  .warn-head { font-size:12px; color:#c0392b; margin:10px 0 0; line-height:1.5; }
+  .sub-note { font-size:11px; color:#888; margin:8px 0 0; }
+  .fc-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .fcard { text-align:center; background:rgba(0,0,0,.03); border-radius:14px; padding:12px 6px; }
+  .fc-day { font-size:13px; font-weight:800; color:var(--text-main); }
+  .fc-day span { display:block; font-size:10px; font-weight:600; color:#999; margin-top:1px; }
+  .fc-icon { width:52px; height:52px; margin:6px auto 2px; }
+  .fc-icon .wi { width:52px; height:52px; }
+  .fc-wx { font-size:11px; color:var(--text-sub); line-height:1.3; min-height:29px; display:flex; align-items:center; justify-content:center; }
+  .fc-pop { font-size:12px; color:#4a90d9; font-weight:700; margin-top:4px; }
+  .fc-temp { font-size:13px; color:var(--text-sub); margin-top:4px; }
+  .fc-temp b { color:#e0592a; font-size:15px; }
+  .kv-row { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 0; border-bottom:1px solid rgba(0,0,0,.06); }
+  .kv-row:last-child { border-bottom:none; }
+  .kv-row span { font-size:13px; color:var(--text-sub); flex:0 0 auto; }
+  .kv-row strong { font-size:14px; color:var(--text-main); text-align:right; }
+  .quake-row { display:flex; align-items:center; gap:12px; padding:9px 0; border-bottom:1px solid rgba(0,0,0,.06); }
+  .quake-row:last-child { border-bottom:none; }
+  .q-int { flex:0 0 auto; min-width:58px; text-align:center; background:#eef2f7; border-radius:10px; padding:6px 4px; font-size:11px; color:var(--text-sub); }
+  .q-int b { display:block; font-size:18px; font-weight:800; color:var(--text-main); }
+  .q-place { font-size:14px; font-weight:700; color:var(--text-main); }
+  .q-sub { font-size:11px; color:#888; margin-top:1px; }
 </style>
+
 </head>
 <body>
 <div class="container">
@@ -358,90 +392,170 @@ async function fetchAmedasLatestFile() {
   return `https://www.jma.go.jp/bosai/amedas/data/map/${compact}.json`;
 }
 
-function extractForecast(json) {
-  const report = json[0];
-  let weatherText = null;
-  let tmax = null, tmin = null, stationCode = null;
-  let popBlocks = [];
-  for (const ts of report.timeSeries) {
-    const area = ts.areas && ts.areas[0];
-    if (!area) continue;
-    if (weatherText === null && area.weathers) {
-      weatherText = area.weathers[0];
-    }
-    // 降水確率(6時間ブロック)。timeDefinesの各時刻から6時間ぶんをそのブロックが担当
-    if (!popBlocks.length && area.pops) {
-      popBlocks = area.pops.map((v, i) => ({
-        time: ts.timeDefines[i],
-        pop: v === '' ? null : Number(v),
-      }));
-    }
-    if (tmax === null && area.temps) {
-      const nums = area.temps.map(v => (v === '' ? null : Number(v))).filter(v => v !== null && !Number.isNaN(v));
-      if (nums.length >= 2) { tmin = Math.min(...nums.slice(0, 2)); tmax = Math.max(...nums.slice(0, 2)); }
-      if (area.area && area.area.code) stationCode = area.area.code;
-    }
-  }
-  return { weatherText, tmax, tmin, stationCode, popBlocks };
+// ---- 気象庁 天気コード → 文言 (telopが無いため主要コードを内蔵。未知は先頭桁で判定) ----
+const WCODE = {
+  '100':'晴れ','101':'晴れ時々くもり','102':'晴れ一時雨','103':'晴れ時々雨','104':'晴れ一時雪','105':'晴れ時々雪',
+  '110':'晴れ後くもり','111':'晴れ後くもり','112':'晴れ後一時雨','113':'晴れ後時々雨','114':'晴れ後雨','115':'晴れ後一時雪','117':'晴れ後雪',
+  '200':'くもり','201':'くもり時々晴れ','202':'くもり一時雨','203':'くもり時々雨','204':'くもり一時雪','205':'くもり時々雪',
+  '206':'くもり後雨','208':'くもり後雨で雷を伴う','209':'くもり','210':'くもり後晴れ','211':'くもり後晴れ','212':'くもり後一時雨','213':'くもり後時々雨','214':'くもり後雨','215':'くもり後雪',
+  '300':'雨','301':'雨時々晴れ','302':'雨時々くもり','303':'雨時々雪','304':'雨か雪','306':'大雨','308':'雨で暴風を伴う','311':'雨後晴れ','313':'雨後くもり','314':'雨後時々雪','315':'雨後雪',
+  '400':'雪','401':'雪時々晴れ','402':'雪時々くもり','403':'雪時々雨','406':'大雪','411':'雪後晴れ','413':'雪後くもり','414':'雪後雨',
+};
+function jmaWeatherText(code) {
+  if (WCODE[code]) return WCODE[code];
+  const c = String(code || '')[0];
+  return c === '1' ? '晴れ' : c === '2' ? 'くもり' : c === '3' ? '雨' : c === '4' ? '雪' : '不明';
 }
 
-// 香川県内は天気・降水確率が共通なので予報は1回、アメダスも1回だけ取得し、
-// 各市町村は自分のアメダス地点の現在気温だけ差し替える。
+// ---- 警報・注意報コード → 名称 ----
+const WARNING_NAMES = {
+  '02':'暴風雪警報','03':'大雨警報','04':'洪水警報','05':'暴風警報','06':'大雪警報','07':'波浪警報','08':'高潮警報',
+  '10':'大雨注意報','12':'大雪注意報','13':'風雪注意報','14':'雷注意報','15':'強風注意報','16':'波浪注意報','17':'融雪注意報',
+  '18':'洪水注意報','19':'高潮注意報','20':'濃霧注意報','21':'乾燥注意報','22':'なだれ注意報','23':'低温注意報','24':'霜注意報','25':'着氷注意報','26':'着雪注意報',
+  '32':'特別警報','33':'大雨特別警報','35':'暴風特別警報','36':'大雪特別警報','37':'波浪特別警報','38':'高潮特別警報',
+};
+
+const JMA = 'https://www.jma.go.jp/bosai';
+
+function toDateKey(d) { return d.toLocaleDateString('sv-SE'); } // YYYY-MM-DD (ローカル)
+
+function parseForecast(fjson) {
+  const short = fjson[0], weekly = fjson[1];
+  const s0 = short.timeSeries[0], s1 = short.timeSeries[1], s2 = short.timeSeries[2];
+  const a0 = s0.areas[0];
+  const wk0 = weekly.timeSeries[0], wk1 = weekly.timeSeries[1];
+
+  const wx = {};   // date -> {text}
+  s0.timeDefines.forEach((t, i) => { wx[t.slice(0,10)] = { text: a0.weathers[i] }; });
+  wk0.timeDefines.forEach((t, i) => { const dk = t.slice(0,10); if (!wx[dk]) wx[dk] = { text: jmaWeatherText(wk0.areas[0].weatherCodes[i]) }; });
+
+  const pop = {};  // date -> 最大降水確率
+  s1.timeDefines.forEach((t, i) => { const dk = t.slice(0,10), v = s1.areas[0].pops[i]; if (v !== '') pop[dk] = Math.max(pop[dk] ?? 0, Number(v)); });
+  wk0.timeDefines.forEach((t, i) => { const dk = t.slice(0,10), v = wk0.areas[0].pops[i]; if (pop[dk] === undefined && v !== '') pop[dk] = Number(v); });
+
+  const temp = {}; // date -> {max,min}
+  s2.timeDefines.forEach((t, i) => { const dk = t.slice(0,10), v = s2.areas[0].temps[i]; if (v !== '') { const n = Number(v); temp[dk] = temp[dk] || {}; temp[dk].max = Math.max(temp[dk].max ?? -99, n); temp[dk].min = Math.min(temp[dk].min ?? 99, n); } });
+  wk1.timeDefines.forEach((t, i) => { const dk = t.slice(0,10), mx = wk1.areas[0].tempsMax[i], mn = wk1.areas[0].tempsMin[i]; if (mx !== '' || mn !== '') { temp[dk] = temp[dk] || {}; if (mx !== '') temp[dk].max = Number(mx); if (mn !== '') temp[dk].min = Number(mn); } });
+
+  const wave = {}; // date -> text (今日明日のみ)
+  s0.timeDefines.forEach((t, i) => { wave[t.slice(0,10)] = a0.waves[i]; });
+
+  const wk = ['日','月','火','水','木','金','土'];
+  const base = new Date();
+  const days = [0,1,2].map(off => {
+    const d = new Date(base); d.setDate(base.getDate() + off);
+    const dk = toDateKey(d);
+    const tt = temp[dk] || {};
+    return {
+      label: ['今日','明日','明後日'][off],
+      mmdd: `${d.getMonth()+1}/${d.getDate()}`, weekday: wk[d.getDay()],
+      weatherText: (wx[dk] && wx[dk].text) || '不明',
+      pop: pop[dk] !== undefined ? pop[dk] : null,
+      tmax: tt.max !== undefined ? tt.max : null,
+      tmin: tt.min !== undefined ? tt.min : null,
+      wave: wave[dk] || null,
+    };
+  });
+
+  const popBlocks = s1.timeDefines.map((t, i) => ({ time: t, pop: s1.areas[0].pops[i] === '' ? null : Number(s1.areas[0].pops[i]) }));
+  return { days, popBlocks };
+}
+
+function parseWarnings(w) {
+  if (!w) return { headline: '', active: [] };
+  const found = new Map();
+  (w.areaTypes || []).forEach(at => (at.areas || []).forEach(ar => (ar.warnings || []).forEach(wn => {
+    if (wn.code && wn.code !== '00' && wn.status && wn.status !== '解除') found.set(wn.code, WARNING_NAMES[wn.code] || ('コード' + wn.code));
+  })));
+  return { headline: (w.headlineText || '').trim(), active: [...found.values()] };
+}
+
+function parseTyphoons(t) {
+  if (!Array.isArray(t) || !t.length) return [];
+  return t.map(x => {
+    const num = x.typhoonNumber ? parseInt(x.typhoonNumber.slice(-2), 10) : null;
+    const isTy = ['TY','STS','TS'].includes(x.category);
+    return { label: (isTy && num) ? `台風${num}号` : (x.category === 'TD' ? '熱帯低気圧' : `熱帯擾乱 ${x.typhoonNumber || ''}`) };
+  });
+}
+
+function parseQuakes(q) {
+  if (!Array.isArray(q)) return [];
+  return q.filter(e => e.anm && e.at && (e.ttl || '').includes('震')).slice(0, 4).map(e => {
+    const dt = new Date(e.at);
+    const time = `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,'0')}:${String(dt.getMinutes()).padStart(2,'0')}`;
+    return { time, place: e.anm, mag: e.mag || '', maxi: e.maxi || '' };
+  });
+}
+
 async function fetchAll() {
-  const keys = Object.keys(CITIES);
   try {
-    const forecastRes = await fetch(`https://www.jma.go.jp/bosai/forecast/data/forecast/${KAGAWA_FORECAST}.json`);
-    if (!forecastRes.ok) throw new Error('予報データの取得に失敗');
-    const shared = extractForecast(await forecastRes.json());
+    const [fRes, wRes, tRes, qRes, amedasUrl] = await Promise.all([
+      fetch(`${JMA}/forecast/data/forecast/${KAGAWA_FORECAST}.json`),
+      fetch(`${JMA}/warning/data/warning/${KAGAWA_FORECAST}.json`).catch(() => null),
+      fetch(`${JMA}/typhoon/data/targetTc.json`).catch(() => null),
+      fetch(`${JMA}/quake/data/list.json`).catch(() => null),
+      fetchAmedasLatestFile().catch(() => null),
+    ]);
+    if (!fRes || !fRes.ok) throw new Error('予報データの取得に失敗');
+    cache.forecast = parseForecast(await fRes.json());
+    cache.warnings = parseWarnings(wRes && wRes.ok ? await wRes.json() : null);
+    cache.typhoons = parseTyphoons(tRes && tRes.ok ? await tRes.json() : null);
+    cache.quakes = parseQuakes(qRes && qRes.ok ? await qRes.json() : null);
 
-    // アメダス観測値（取れなくても予報は表示する）
     let amedasMap = null;
-    try {
-      const amedasUrl = await fetchAmedasLatestFile();
-      const amedasRes = await fetch(amedasUrl);
-      if (amedasRes.ok) amedasMap = await amedasRes.json();
-    } catch (e) { /* 観測値なしで継続 */ }
-
+    if (amedasUrl) { try { const ar = await fetch(amedasUrl); if (ar.ok) amedasMap = await ar.json(); } catch (e) {} }
     const num = a => (Array.isArray(a) && typeof a[0] === 'number') ? a[0] : null;
-    keys.forEach(key => {
-      const st = amedasMap && amedasMap[CITIES[key].amedasId];
-      cache[key] = {
-        weatherText: shared.weatherText,
-        tmax: shared.tmax,
-        tmin: shared.tmin,
-        popBlocks: shared.popBlocks,
-        currentTemp: st ? num(st.temp) : null,
-        humidity: st ? num(st.humidity) : null,
-        wind: st ? num(st.wind) : null,
-      };
+    cache.obs = {};
+    Object.keys(CITIES).forEach(k => {
+      const st = amedasMap && amedasMap[CITIES[k].amedasId];
+      cache.obs[k] = { temp: st ? num(st.temp) : null, wind: st ? num(st.wind) : null, hum: st ? num(st.humidity) : null };
     });
     renderAll();
   } catch (e) {
-    card.innerHTML = `<div class="mcard"><div class="error">天気情報の取得に失敗しました<br>${e.message}</div></div>`;
+    card.innerHTML = `<div class="mcard"><div class="error">情報の取得に失敗しました<br>${e.message}</div></div>`;
   }
 }
 
-// 各市町村ごとにカードを分けて、現在気温・最高・最低・風速・湿度を表示
-function renderAll() {
-  const keys = Object.keys(CITIES);
-  const shared = keys.map(k => cache[k]).find(Boolean);
-  if (!shared) return;
+function sectionCard(title, body, cls) {
+  return `<div class="mcard section ${cls || ''}"><p class="section-title">${title}</p>${body}</div>`;
+}
 
-  const [bg1, bg2] = weatherBg(shared.weatherText);
-  document.body.style.setProperty('--bg1', bg1);
-  document.body.style.setProperty('--bg2', bg2);
+function threeDaySection(days) {
+  const cards = days.map(d => {
+    const pop = d.pop != null ? d.pop + '%' : '-';
+    const tmax = d.tmax != null ? Math.round(d.tmax) + '°' : '-';
+    const tmin = d.tmin != null ? Math.round(d.tmin) + '°' : '-';
+    return `<div class="fcard">
+      <div class="fc-day">${d.label}<span>${d.mmdd}(${d.weekday})</span></div>
+      <div class="fc-icon">${weatherIcon(d.weatherText)}</div>
+      <div class="fc-wx">${d.weatherText}</div>
+      <div class="fc-pop">☂ ${pop}</div>
+      <div class="fc-temp"><b>${tmax}</b> / ${tmin}</div>
+    </div>`;
+  }).join('');
+  return sectionCard('📅 今日・明日・明後日の天気', `<div class="fc-grid">${cards}</div>`);
+}
 
-  const today = new Date();
-  const dateStr = today.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
-  const emoji = weatherEmoji(shared.weatherText);
-  const tmax = shared.tmax !== null ? Math.round(shared.tmax) + '°' : '-';
-  const tmin = shared.tmin !== null ? Math.round(shared.tmin) + '°' : '-';
+function popBlocksHtml(popBlocks) {
+  if (!popBlocks || !popBlocks.length) return '';
+  const todayStr = new Date().toLocaleDateString('sv-SE');
+  const blocks = popBlocks.filter(b => b.time.slice(0, 10) === todayStr && b.pop !== null);
+  if (!blocks.length) return '';
+  const cells = blocks.map(b => {
+    const start = new Date(b.time).getHours();
+    const end = start + 6;
+    return `<div class="hourly-cell"><div class="h-time">${start}〜${end}時</div><div class="h-emoji">${popEmoji(b.pop, '☁️')}</div><div class="h-pop">☂${b.pop}%</div></div>`;
+  }).join('');
+  return `<div class="hourly">${cells}</div>`;
+}
 
-  const cards = keys.map(k => {
-    const d = cache[k] || {};
-    const cur = (d.currentTemp !== null && d.currentTemp !== undefined) ? Math.round(d.currentTemp) : '--';
-    const wind = (d.wind !== null && d.wind !== undefined) ? d.wind + ' m/s' : '-';
-    const hum = (d.humidity !== null && d.humidity !== undefined) ? d.humidity + '%' : '-';
+function municipalitySection() {
+  const cards = Object.keys(CITIES).map(k => {
+    const d = cache.obs[k] || {};
+    const cur = d.temp != null ? Math.round(d.temp) : '--';
+    const wind = d.wind != null ? d.wind + ' m/s' : '-';
+    const hum = d.hum != null ? d.hum + '%' : '-';
     return `<div class="mcard mcity">
       <div class="m-name">${CITIES[k].name}</div>
       <div class="m-temp">${cur}<span>°C</span></div>
@@ -451,43 +565,63 @@ function renderAll() {
       </div>
     </div>`;
   }).join('');
-
-  const precip = renderPopBlocks(shared.popBlocks, emoji);
-
-  card.innerHTML = `
-    <div class="mcard summary">
-      <p class="city-name">香川県</p>
-      <p class="date">${dateStr}</p>
-      <div class="wicon">${weatherIcon(shared.weatherText)}</div>
-      <p class="condition">${shared.weatherText || '不明'}</p>
-      <div class="subrow">
-        <div>最高<strong>${tmax}</strong></div>
-        <div>最低<strong>${tmin}</strong></div>
-      </div>
-      ${precip}
-    </div>
-    <p class="day-header">市町村ごとの現在の観測</p>
-    <div class="mgrid">${cards}</div>
-  `;
-  updatedEl.textContent = `更新: ${today.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} (気象庁データ) ／ 天気・最高・最低・降水確率は香川県予報`;
+  return `<p class="day-header">🌡️ 市町村ごとの現在の観測（気温・風速・湿度）</p><div class="mgrid">${cards}</div>`;
 }
 
-// 今日の時間帯別（6時間ブロック）の降水確率を表示。JMAはこれが最も細かい時間別データ
-function renderPopBlocks(popBlocks, dayEmoji) {
-  if (!popBlocks || !popBlocks.length) return '';
-  const todayStr = new Date().toLocaleDateString('sv-SE'); // YYYY-MM-DD
-  const blocks = popBlocks.filter(b => b.time.slice(0, 10) === todayStr && b.pop !== null);
-  if (!blocks.length) return '';
-  const cells = blocks.map(b => {
-    const start = new Date(b.time).getHours();
-    const end = start + 6; // JMAの降水確率は各時刻から6時間ぶん
-    return `<div class="hourly-cell">
-      <div class="h-time">${start}〜${end}時</div>
-      <div class="h-emoji">${popEmoji(b.pop, dayEmoji)}</div>
-      <div class="h-pop">☂${b.pop}%</div>
-    </div>`;
-  }).join('');
-  return `<p class="hourly-title">今日の時間帯別 降水確率</p><div class="hourly">${cells}</div>`;
+function waveSection(days) {
+  const rows = days.filter(d => d.wave).map(d => `<div class="kv-row"><span>${d.label}</span><strong>${d.wave}</strong></div>`).join('');
+  return sectionCard('🌊 波浪情報（香川県）', rows || '<p class="ok-text">情報がありません</p>');
+}
+
+function warningSection() {
+  const w = cache.warnings || { active: [], headline: '' };
+  const body = w.active.length
+    ? `<div class="chips">${w.active.map(n => `<span class="chip chip-warn">${n}</span>`).join('')}</div>${w.headline ? `<p class="warn-head">${w.headline}</p>` : ''}`
+    : '<p class="ok-text">✓ 現在、発表されている警報・注意報はありません</p>';
+  return sectionCard('⚠️ 警報・注意報（香川県）', body, w.active.length ? 'alert' : '');
+}
+
+function typhoonSection() {
+  const ts = cache.typhoons || [];
+  const body = ts.length
+    ? `<div class="chips">${ts.map(t => `<span class="chip chip-ty">${t.label}</span>`).join('')}</div><p class="sub-note">発生中。進路など詳細は気象庁の台風情報をご確認ください。</p>`
+    : '<p class="ok-text">✓ 現在、台風の情報はありません</p>';
+  return sectionCard('🌀 台風情報', body, ts.length ? 'alert' : '');
+}
+
+function quakeSection() {
+  const qs = cache.quakes || [];
+  const body = qs.length
+    ? qs.map(q => `<div class="quake-row"><div class="q-int">震度<b>${q.maxi || '-'}</b></div><div><div class="q-place">${q.place}</div><div class="q-sub">${q.time}${q.mag ? ' ・ M' + q.mag : ''}</div></div></div>`).join('')
+    : '<p class="ok-text">最近の地震情報はありません</p>';
+  return sectionCard('🌍 最近の地震情報（全国）', body);
+}
+
+function renderAll() {
+  const f = cache.forecast;
+  if (!f) { card.innerHTML = `<div class="mcard"><div class="error">予報データを取得できませんでした</div></div>`; return; }
+  const today = f.days[0];
+
+  const [bg1, bg2] = weatherBg(today.weatherText);
+  document.body.style.setProperty('--bg1', bg1);
+  document.body.style.setProperty('--bg2', bg2);
+
+  const now = new Date();
+  const dateStr = now.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+  const precip = popBlocksHtml(f.popBlocks);
+
+  card.innerHTML = `
+    <p class="page-title">香川県の天気・防災情報</p>
+    <p class="page-date">${dateStr} 現在</p>
+    ${warningSection()}
+    ${threeDaySection(f.days)}
+    ${precip ? sectionCard('☔ 今日の時間帯別 降水確率', precip) : ''}
+    ${municipalitySection()}
+    ${waveSection(f.days)}
+    ${typhoonSection()}
+    ${quakeSection()}
+  `;
+  updatedEl.textContent = `更新: ${now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })} ／ 出典: 気象庁（天気・降水・最高最低・波浪は香川県予報、気温観測は各アメダス地点）`;
 }
 
 fetchAll();
