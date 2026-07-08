@@ -283,8 +283,10 @@
   .pop-days { display:flex; flex-direction:column; gap:12px; }
   .pop-day-label { font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:6px; }
   @media (min-width:760px) {
-    .pop-days { flex-direction:row; flex-wrap:wrap; align-items:flex-start; gap:28px; }
-    .pop-days .pop-day { flex:0 0 auto; }
+    .pop-days { flex-direction:row; flex-wrap:nowrap; align-items:stretch; gap:32px; }
+    .pop-days .pop-day { flex:1; }
+    .pop-days .hourly { display:flex; }
+    .pop-days .hourly-cell { flex:1; min-width:0; }
   }
   .wgrid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
   .wcell { text-align:center; background:rgba(0,0,0,.03); border-radius:12px; padding:10px 3px; }
@@ -606,10 +608,6 @@ function popBlocksHtml(popBlocks, days) {
     }).join('');
     return `<div class="pop-day"><div class="pop-day-label">${label}</div><div class="hourly">${cells}</div></div>`;
   }).join('');
-  const da = days && days[2];
-  if (da && da.pop != null) {
-    html += `<div class="pop-day"><div class="pop-day-label">明後日 ${da.mmdd}(${da.weekday})</div><div class="hourly"><div class="hourly-cell"><div class="h-time">終日</div><div class="h-emoji">${popEmoji(da.pop, '☁️')}</div><div class="h-pop">☂${da.pop}%</div></div></div></div>`;
-  }
   return `<div class="pop-days">${html}</div>`;
 }
 
@@ -678,7 +676,7 @@ function renderAll() {
     <p class="page-date">${dateStr} 現在</p>
     ${warningSection()}
     ${threeDaySection(f.days)}
-    ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日・明後日）', precip) : ''}
+    ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日）', precip) : ''}
     ${weeklySection(f.weekly)}
     ${municipalitySection()}
     ${waveSection(f.days)}
