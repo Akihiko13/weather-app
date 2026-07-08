@@ -282,6 +282,10 @@
   .q-sub { font-size:11px; color:#888; margin-top:1px; }
   .pop-days { display:flex; flex-direction:column; gap:12px; }
   .pop-day-label { font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:6px; }
+  @media (max-width:600px) {
+    .pop-days .hourly { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:0; overflow:visible; }
+    .pop-days .hourly-cell { min-width:0; }
+  }
   @media (min-width:760px) {
     .pop-days { flex-direction:row; flex-wrap:nowrap; align-items:stretch; gap:32px; }
     .pop-days .pop-day { flex:1; }
