@@ -282,15 +282,12 @@
   .q-sub { font-size:11px; color:#888; margin-top:1px; }
   .pop-days { display:flex; flex-direction:column; gap:12px; }
   .pop-day-label { font-size:12px; font-weight:700; color:var(--text-sub); margin-bottom:6px; }
-  @media (max-width:600px) {
-    .pop-days .hourly { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:0; overflow:visible; }
-    .pop-days .hourly-cell { min-width:0; }
-  }
+  /* 6時間ブロックは常に4列(各25%)。今日(3ブロック)は右端1枠が空く */
+  .pop-days .hourly { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin:0; overflow:visible; }
+  .pop-days .hourly-cell { min-width:0; }
   @media (min-width:760px) {
     .pop-days { flex-direction:row; flex-wrap:nowrap; align-items:stretch; gap:32px; }
     .pop-days .pop-day { flex:1; }
-    .pop-days .hourly { display:flex; }
-    .pop-days .hourly-cell { flex:1; min-width:0; }
   }
   .wgrid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
   .wcell { text-align:center; background:rgba(0,0,0,.03); border-radius:12px; padding:10px 3px; }
