@@ -564,22 +564,6 @@ function sectionCard(title, body, cls) {
   return `<div class="mcard section ${cls || ''}"><p class="section-title">${title}</p>${body}</div>`;
 }
 
-function threeDaySection(days) {
-  const cards = days.map(d => {
-    const pop = d.pop != null ? d.pop + '%' : '-';
-    const tmax = d.tmax != null ? Math.round(d.tmax) + '°' : '-';
-    const tmin = d.tmin != null ? Math.round(d.tmin) + '°' : '-';
-    return `<div class="fcard">
-      <div class="fc-day">${d.label}<span>${d.mmdd}(${d.weekday})</span></div>
-      <div class="fc-icon">${weatherIcon(d.weatherText)}</div>
-      <div class="fc-wx">${d.weatherText}</div>
-      <div class="fc-pop">☂ ${pop}</div>
-      <div class="fc-temp"><b>${tmax}</b> / ${tmin}</div>
-    </div>`;
-  }).join('');
-  return sectionCard('📅 今日・明日・明後日の天気', `<div class="fc-grid">${cards}</div>`);
-}
-
 function weeklySection(weekly) {
   if (!weekly || !weekly.length) return '';
   const cells = weekly.map(d => {
@@ -679,9 +663,8 @@ function renderAll() {
     <p class="page-title">香川県の天気・防災情報</p>
     <p class="page-date">${dateStr} 現在</p>
     ${warningSection()}
-    ${threeDaySection(f.days)}
-    ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日）', precip) : ''}
     ${weeklySection(f.weekly)}
+    ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日）', precip) : ''}
     ${municipalitySection()}
     ${waveSection(f.days)}
     ${typhoonSection()}
