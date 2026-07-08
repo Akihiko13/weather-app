@@ -286,6 +286,19 @@
     .pop-days { flex-direction:row; flex-wrap:wrap; align-items:flex-start; gap:28px; }
     .pop-days .pop-day { flex:0 0 auto; }
   }
+  .wgrid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .wcell { text-align:center; background:rgba(0,0,0,.03); border-radius:12px; padding:10px 3px; }
+  .w-day { font-size:12px; font-weight:700; color:var(--text-main); }
+  .w-day span { font-size:10px; color:#999; }
+  .w-icon { width:38px; height:38px; margin:4px auto 2px; }
+  .w-icon .wi { width:38px; height:38px; }
+  .w-pop { font-size:11px; color:#4a90d9; font-weight:700; }
+  .w-temp { font-size:12px; color:var(--text-sub); margin-top:3px; line-height:1.35; }
+  .w-temp b { color:#e0592a; }
+  @media (max-width:600px) {
+    .wgrid { display:flex; overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    .wcell { flex:0 0 62px; }
+  }
 </style>
 
 </head>
@@ -454,6 +467,7 @@ function parseForecast(fjson) {
     const tt = temp[dk] || {};
     return {
       label: ['今日','明日','明後日'][off],
+      dateKey: dk,
       mmdd: `${d.getMonth()+1}/${d.getDate()}`, weekday: wk[d.getDay()],
       weatherText: (wx[dk] && wx[dk].text) || '不明',
       pop: pop[dk] !== undefined ? pop[dk] : null,
@@ -464,7 +478,24 @@ function parseForecast(fjson) {
   });
 
   const popBlocks = s1.timeDefines.map((t, i) => ({ time: t, pop: s1.areas[0].pops[i] === '' ? null : Number(s1.areas[0].pops[i]) }));
-  return { days, popBlocks };
+
+  // 週間予報（7日分）。今日・明日の空欄は短期予報の値で補完
+  const dmap = {}; days.forEach(d => { dmap[d.dateKey] = d; });
+  const numOr = v => (v === '' || v === undefined) ? null : Number(v);
+  const weeklyList = wk0.timeDefines.map((t, i) => {
+    const dk = t.slice(0, 10); const d = new Date(dk + 'T00:00:00');
+    const wd = {
+      dateKey: dk, mmdd: `${d.getMonth()+1}/${d.getDate()}`, weekday: wk[d.getDay()],
+      weatherText: jmaWeatherText(wk0.areas[0].weatherCodes[i]),
+      pop: numOr(wk0.areas[0].pops[i]),
+      tmax: numOr(wk1.areas[0].tempsMax[i]),
+      tmin: numOr(wk1.areas[0].tempsMin[i]),
+    };
+    const dd = dmap[dk];
+    if (dd) { if (wd.pop == null) wd.pop = dd.pop; if (wd.tmax == null) wd.tmax = dd.tmax; if (wd.tmin == null) wd.tmin = dd.tmin; }
+    return wd;
+  });
+  return { days, popBlocks, weekly: weeklyList };
 }
 
 function parseWarnings(w) {
@@ -541,6 +572,22 @@ function threeDaySection(days) {
     </div>`;
   }).join('');
   return sectionCard('📅 今日・明日・明後日の天気', `<div class="fc-grid">${cards}</div>`);
+}
+
+function weeklySection(weekly) {
+  if (!weekly || !weekly.length) return '';
+  const cells = weekly.map(d => {
+    const pop = d.pop != null ? d.pop + '%' : '-';
+    const tmax = d.tmax != null ? Math.round(d.tmax) + '°' : '-';
+    const tmin = d.tmin != null ? Math.round(d.tmin) + '°' : '-';
+    return `<div class="wcell">
+      <div class="w-day">${d.mmdd}<span>(${d.weekday})</span></div>
+      <div class="w-icon">${weatherIcon(d.weatherText)}</div>
+      <div class="w-pop">☂${pop}</div>
+      <div class="w-temp"><b>${tmax}</b><br>${tmin}</div>
+    </div>`;
+  }).join('');
+  return sectionCard('🗓️ 週間予報（香川県）', `<div class="wgrid">${cells}</div>`);
 }
 
 function popBlocksHtml(popBlocks, days) {
@@ -632,6 +679,7 @@ function renderAll() {
     ${warningSection()}
     ${threeDaySection(f.days)}
     ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日・明後日）', precip) : ''}
+    ${weeklySection(f.weekly)}
     ${municipalitySection()}
     ${waveSection(f.days)}
     ${typhoonSection()}
