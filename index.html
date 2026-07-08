@@ -292,7 +292,7 @@
     .pop-days .hourly { display:flex; }
     .pop-days .hourly-cell { flex:1; min-width:0; }
   }
-  .wgrid { display:grid; grid-template-columns:repeat(7,1fr); gap:6px; }
+  .wgrid { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; }
   .wcell { text-align:center; background:rgba(0,0,0,.03); border-radius:12px; padding:10px 3px; }
   .w-day { font-size:12px; font-weight:700; color:var(--text-main); }
   .w-day span { font-size:10px; color:#999; }
@@ -564,9 +564,26 @@ function sectionCard(title, body, cls) {
   return `<div class="mcard section ${cls || ''}"><p class="section-title">${title}</p>${body}</div>`;
 }
 
+function threeDaySection(days) {
+  const cards = days.map(d => {
+    const pop = d.pop != null ? d.pop + '%' : '-';
+    const tmax = d.tmax != null ? Math.round(d.tmax) + '°' : '-';
+    const tmin = d.tmin != null ? Math.round(d.tmin) + '°' : '-';
+    return `<div class="fcard">
+      <div class="fc-day">${d.label}<span>${d.mmdd}(${d.weekday})</span></div>
+      <div class="fc-icon">${weatherIcon(d.weatherText)}</div>
+      <div class="fc-wx">${d.weatherText}</div>
+      <div class="fc-pop">☂ ${pop}</div>
+      <div class="fc-temp"><b>${tmax}</b> / ${tmin}</div>
+    </div>`;
+  }).join('');
+  return sectionCard('📅 今日・明日・明後日の天気', `<div class="fc-grid">${cards}</div>`);
+}
+
 function weeklySection(weekly) {
-  if (!weekly || !weekly.length) return '';
-  const cells = weekly.map(d => {
+  const rest = (weekly || []).slice(3); // 今日・明日・明後日は上の項目と重複するため除外
+  if (!rest.length) return '';
+  const cells = rest.map(d => {
     const pop = d.pop != null ? d.pop + '%' : '-';
     const tmax = d.tmax != null ? Math.round(d.tmax) + '°' : '-';
     const tmin = d.tmin != null ? Math.round(d.tmin) + '°' : '-';
@@ -577,7 +594,7 @@ function weeklySection(weekly) {
       <div class="w-temp"><b>${tmax}</b><br>${tmin}</div>
     </div>`;
   }).join('');
-  return sectionCard('🗓️ 週間予報（香川県）', `<div class="wgrid">${cells}</div>`);
+  return sectionCard('🗓️ 週間予報（4日目以降）', `<div class="wgrid">${cells}</div>`);
 }
 
 function popBlocksHtml(popBlocks, days) {
@@ -663,8 +680,9 @@ function renderAll() {
     <p class="page-title">香川県の天気・防災情報</p>
     <p class="page-date">${dateStr} 現在</p>
     ${warningSection()}
-    ${weeklySection(f.weekly)}
+    ${threeDaySection(f.days)}
     ${precip ? sectionCard('☔ 時間帯別 降水確率（今日・明日）', precip) : ''}
+    ${weeklySection(f.weekly)}
     ${municipalitySection()}
     ${waveSection(f.days)}
     ${typhoonSection()}
